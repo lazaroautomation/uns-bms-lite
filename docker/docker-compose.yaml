@@ -1,8 +1,9 @@
 services:
-  # MQTT Broker - The Unified Namespace Backbone
+  # MQTT Broker - The Unified Namespace Backbone (FOSS)
   mqtt-broker:
     image: emqx/emqx:${EMQX_VERSION}
     container_name: uns-broker
+    restart: unless-stopped
     ports:
       - "1883:1883" # MQTT Protocol
       - "8083:8083" # MQTT over WebSockets
@@ -12,54 +13,83 @@ services:
       - emqx-log:/opt/emqx/log
     networks:
       - uns-network
+    environment:
+      - EMQX_NAME=emqx
+      - EMQX_HOST=127.0.0.1
 
   # Node-RED - Transformation & Context Layer
   node-red:
     image: nodered/node-red:${NODERED_VERSION}
     container_name: uns-nodered
+    restart: unless-stopped
     depends_on:
       - mqtt-broker
     ports:
       - "1880:1880"
     volumes:
-      - ../nodered:/data
+      - nodered-data:/data
     environment:
       - TZ=America/Mexico_City
     networks:
       - uns-network
 
-  # InfluxDB - The Historian
+  # InfluxDB v2 - The Historian (Stable FOSS)
   influxdb:
     image: influxdb:${INFLUXDB_VERSION}
     container_name: uns-influxdb
+    restart: unless-stopped
     ports:
       - "8086:8086"
     env_file: .env
     volumes:
       - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
     networks:
       - uns-network
+    healthcheck:
+      test: [ "CMD", "influx", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Grafana - Visualization
+  # Grafana - Visualization (OSS Edition)
   grafana:
-    image: grafana/grafana:${GRAFANA_VERSION}
+    image: grafana/grafana-oss:${GRAFANA_VERSION}
     container_name: uns-grafana
+    restart: unless-stopped
     depends_on:
-      - influxdb
+      influxdb:
+        condition: service_healthy
     ports:
       - "3000:3000"
     volumes:
-      - ../grafana/provisioning:/etc/grafana/provisioning
+      - grafana-provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
     networks:
       - uns-network
 
 networks:
   uns-network:
     driver: bridge
+    name: uns-network
 
 volumes:
   emqx-data:
+    name: uns-emqx-data
   emqx-log:
+    name: uns-emqx-log
+  nodered-data:
+    name: uns-nodered-data
   influxdb-data:
+    name: uns-influxdb-data
+  influxdb-config:
+    name: uns-influxdb-config
   grafana-data:
+    name: uns-grafana-data
+  grafana-provisioning:
+    name: uns-grafana-provisioning

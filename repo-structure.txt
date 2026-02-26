@@ -1,0 +1,78 @@
+uns-bms-lite/
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+│
+├── docker/
+│   ├── docker-compose.yml
+│   ├── .env.example
+│   └── README.md
+│
+├── edge/
+│   ├── README.md
+│   │
+│   ├── dotnet-simulator/
+│   │   ├── src/
+│   │   │   └── UNS.BmsLite.Simulator/
+│   │   │       ├── Program.cs
+│   │   │       ├── MqttClientService.cs
+│   │   │       ├── TelemetryGenerator.cs
+│   │   │       └── appsettings.json
+│   │   ├── UNS.BmsLite.Simulator.sln
+│   │   └── README.md
+│   │
+│   └── esp32/
+│       ├── src/
+│       │   └── main.ino
+│       ├── platformio.ini
+│       └── README.md
+│
+├── broker/
+│   └── README.md            # EMQX configuration notes
+│
+├── nodered/
+│   ├── flows.json
+│   ├── settings.js
+│   └── README.md
+│
+├── influxdb/
+│   ├── setup.md
+│   └── README.md
+│
+├── grafana/
+│   ├── dashboards/
+│   │   └── uns-bms-dashboard.json
+│   ├── provisioning/
+│   │   └── datasources.yaml
+│   └── README.md
+│
+├── frontend/
+│   ├── README.md
+│   └── web-app/
+│       ├── src/
+│       ├── public/
+│       ├── index.html
+│       ├── package.json
+│       ├── vite.config.js
+│       ├── .env.example
+│       └── README.md
+│
+├── docs/
+│   ├── README.md
+│   ├── architecture.md
+│   ├── topic-namespace.md
+│   ├── data-model.md
+│   ├── deployment.md
+│   └── images/
+│       └── architecture.png
+│
+├── scripts/
+│   ├── init.sh
+│   ├── reset.sh
+│   └── README.md
+│
+├── README.md
+├── LICENSE
+├── .gitignore
+└── .dockerignore

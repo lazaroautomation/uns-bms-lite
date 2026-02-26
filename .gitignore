@@ -1,0 +1,23 @@
+# IDEs
+.vscode/
+.idea/
+
+# Environment / Secrets
+.env
+docker/.env
+frontend/web-app/.env
+
+# Docker
+docker/data/
+docker/log/
+
+# Node / Frontend
+node_modules/
+dist/
+
+# .NET / C#
+bin/
+obj/
+
+# PlatformIO (ESP32)
+.pio/

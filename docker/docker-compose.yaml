@@ -1,0 +1,65 @@
+services:
+  # MQTT Broker - The Unified Namespace Backbone
+  mqtt-broker:
+    image: emqx/emqx:${EMQX_VERSION}
+    container_name: uns-broker
+    ports:
+      - "1883:1883" # MQTT Protocol
+      - "8083:8083" # MQTT over WebSockets
+      - "18083:18083" # Dashboard UI
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    networks:
+      - uns-network
+
+  # Node-RED - Transformation & Context Layer
+  node-red:
+    image: nodered/node-red:${NODERED_VERSION}
+    container_name: uns-nodered
+    depends_on:
+      - mqtt-broker
+    ports:
+      - "1880:1880"
+    volumes:
+      - ../nodered:/data
+    environment:
+      - TZ=America/Mexico_City
+    networks:
+      - uns-network
+
+  # InfluxDB - The Historian
+  influxdb:
+    image: influxdb:${INFLUXDB_VERSION}
+    container_name: uns-influxdb
+    ports:
+      - "8086:8086"
+    env_file: .env
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - uns-network
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    container_name: uns-grafana
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    networks:
+      - uns-network
+
+networks:
+  uns-network:
+    driver: bridge
+
+volumes:
+  emqx-data:
+  emqx-log:
+  influxdb-data:
+  grafana-data:

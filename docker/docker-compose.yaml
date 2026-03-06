@@ -5,17 +5,18 @@ services:
     container_name: uns-broker
     restart: unless-stopped
     ports:
-      - "1883:1883" # MQTT Protocol
-      - "8083:8083" # MQTT over WebSockets
+      - "1883:1883"   # MQTT Protocol
+      - "8083:8083"   # MQTT over WebSockets
       - "18083:18083" # Dashboard UI
     volumes:
       - emqx-data:/opt/emqx/data
       - emqx-log:/opt/emqx/log
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       - uns-network
     environment:
       - EMQX_NAME=emqx
-      - EMQX_HOST=127.0.0.1
 
   # Node-RED - Transformation & Context Layer
   node-red:
@@ -28,8 +29,8 @@ services:
       - "1880:1880"
     volumes:
       - nodered-data:/data
-    environment:
-      - TZ=America/Mexico_City
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       - uns-network
 
@@ -44,6 +45,8 @@ services:
     volumes:
       - influxdb-data:/var/lib/influxdb2
       - influxdb-config:/etc/influxdb2
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       - uns-network
     healthcheck:
@@ -66,6 +69,8 @@ services:
     volumes:
       - grafana-provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin

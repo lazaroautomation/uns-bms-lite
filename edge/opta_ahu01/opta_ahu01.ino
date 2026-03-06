@@ -5,6 +5,17 @@
  * Interface    : Serial command shell (115200 baud)
  * ============================================================================
  *
+ * TIMESTAMP ARCHITECTURE:
+ *   event_ts  — when the sensor value was read (NTP-synced UTC epoch ms)
+ *               set by this device, never overwritten downstream
+ *   ingest_ts — added by Node-RED when the message arrives at the broker
+ *               difference = pipeline latency (observable in Grafana)
+ *
+ * NTP:
+ *   Syncs to your PC acting as NTP server (same clock as Docker containers).
+ *   Set NTP_SERVER to your PC's LAN IP. Port 123/UDP must be open.
+ *   Always UTC (gmtOffset = 0). Grafana handles display timezone.
+ *
  * SERIAL COMMANDS:
  *   connect   → connect to MQTT broker
  *   start     → begin publishing telemetry every 1s
@@ -13,15 +24,17 @@
  *
  * BOOT SEQUENCE:
  *   1. Ethernet starts with static IP
- *   2. IP and broker address printed to serial
- *   3. Waits for: connect
- *   4. Once connected, waits for: start
+ *   2. NTP sync attempted (blocks until successful)
+ *   3. IP, broker, and NTP server printed to serial
+ *   4. Waits for: connect → start
  * ============================================================================
  */
 
 #include <Ethernet.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <EthernetUdp.h>
+#include <NTPClient.h>
 
 // ─── Network ─────────────────────────────────────────────────────────────────
 
@@ -31,9 +44,30 @@ IPAddress DNS_SERVER (192, 168,   1,   1);
 IPAddress GATEWAY    (192, 168,   1,   1);
 IPAddress SUBNET     (255, 255, 255,   0);
 
+// ─── NTP ─────────────────────────────────────────────────────────────────────
+
+// Point to your PC's LAN IP — it is the NTP server for all edge devices.
+// Must match the machine running Docker (same clock source as containers).
+// Windows: enable W32tm and open UDP/123. Linux/Mac: already running by default.
+const char* NTP_SERVER      = "192.168.1.X";   // ← replace with your PC's LAN IP
+const long  NTP_GMT_OFFSET  = 0;               // always UTC — Grafana converts for display
+const int   NTP_INTERVAL_MS = 60000;           // re-sync every 60 s
+
+EthernetUDP ntpUDP;
+NTPClient   timeClient(ntpUDP, NTP_SERVER, NTP_GMT_OFFSET, NTP_INTERVAL_MS);
+
+/// Returns current UTC time as Unix epoch milliseconds.
+/// Uses NTPClient for seconds + Ethernet stack millis for sub-second precision.
+unsigned long long getEpochMs() {
+  timeClient.update();
+  // NTPClient gives whole seconds; add millis offset within the current second
+  unsigned long long epochSec = (unsigned long long)timeClient.getEpochTime();
+  return epochSec * 1000ULL;
+}
+
 // ─── MQTT ────────────────────────────────────────────────────────────────────
 
-const char* MQTT_HOST      = "192.168.1.100";
+const char* MQTT_HOST      = "192.168.1.100";   // ← EMQX broker IP (Docker host)
 const int   MQTT_PORT      = 1883;
 const char* MQTT_CLIENT_ID = "opta-ahu01";
 
@@ -72,8 +106,8 @@ PubSubClient   mqtt(ethClient);
 unsigned long lastTelemetryMs = 0;
 unsigned long lastStatusMs    = 0;
 
-bool   isPublishing  = false;
-String serialBuffer  = "";
+bool   isPublishing = false;
+String serialBuffer = "";
 
 // ─── Simulated Reads ─────────────────────────────────────────────────────────
 
@@ -165,7 +199,6 @@ bool connectMQTT() {
   if (ok) {
     Serial.println("[MQTT] Connected.");
 
-    // Publish online status (retained)
     JsonDocument doc;
     doc["online"] = true;
     doc["device"] = MQTT_CLIENT_ID;
@@ -189,21 +222,43 @@ bool connectMQTT() {
 // ─── Publish Telemetry ────────────────────────────────────────────────────────
 
 void publishTelemetry() {
+  // Stamp the event time first — before any sensor reads or serialization delay.
+  // This is the true measurement time. Node-RED will add ingest_ts downstream.
+  unsigned long long event_ts = getEpochMs();
+
+  float chwIn    = readChwTempIn();
+  float chwOut   = readChwTempOut();
+  float supplyT  = readSupplyTemp();
+  float returnT  = readReturnTemp();
+  float filterDp = readFilterDp();
+  float ductPa   = readDuctPressure();
+  float vfdSpd   = readVfdSpeed();
+  float co2      = readCo2Ppm();
+  float valvePos = readValvePosition();
+
   JsonDocument doc;
-  doc["device"]                = MQTT_CLIENT_ID;
-  doc["mode"]                  = ahu_mode;
-  doc["chw_temp_in_c"]         = serialized(String(readChwTempIn(),    2));
-  doc["chw_temp_out_c"]        = serialized(String(readChwTempOut(),   2));
-  doc["chw_delta_t_c"]         = serialized(String(readChwTempOut() - readChwTempIn(), 2));
-  doc["supply_air_temp_c"]     = serialized(String(readSupplyTemp(),   2));
+
+  // ── Identity ──
+  doc["device"] = MQTT_CLIENT_ID;
+  doc["mode"]   = ahu_mode;
+
+  // ── Event timestamp (UTC epoch ms) ──
+  // Cast to unsigned long to fit ArduinoJson — safe until year 2554.
+  doc["event_ts"] = (unsigned long)event_ts;
+
+  // ── Process values ──
+  doc["chw_temp_in_c"]         = serialized(String(chwIn,     2));
+  doc["chw_temp_out_c"]        = serialized(String(chwOut,    2));
+  doc["chw_delta_t_c"]         = serialized(String(chwOut - chwIn, 2));
+  doc["supply_air_temp_c"]     = serialized(String(supplyT,   2));
   doc["supply_air_setpoint_c"] = supply_air_setpoint_c;
-  doc["return_air_temp_c"]     = serialized(String(readReturnTemp(),   2));
-  doc["filter_dp_pa"]          = serialized(String(readFilterDp(),     1));
-  doc["duct_pressure_pa"]      = serialized(String(readDuctPressure(), 1));
-  doc["vfd_speed_pct"]         = serialized(String(readVfdSpeed(),     1));
+  doc["return_air_temp_c"]     = serialized(String(returnT,   2));
+  doc["filter_dp_pa"]          = serialized(String(filterDp,  1));
+  doc["duct_pressure_pa"]      = serialized(String(ductPa,    1));
+  doc["vfd_speed_pct"]         = serialized(String(vfdSpd,    1));
   doc["vfd_setpoint_pct"]      = vfd_speed_pct;
-  doc["valve_position_pct"]    = serialized(String(readValvePosition(), 1));
-  doc["co2_ppm"]               = serialized(String(readCo2Ppm(),       0));
+  doc["valve_position_pct"]    = serialized(String(valvePos,  1));
+  doc["co2_ppm"]               = serialized(String(co2,       0));
   doc["uptime_ms"]             = millis();
 
   char buf[512];
@@ -225,6 +280,7 @@ void publishStatus() {
   doc["supply_setpoint_c"] = supply_air_setpoint_c;
   doc["vfd_setpoint_pct"]  = vfd_speed_pct;
   doc["eth_link"]          = (Ethernet.linkStatus() == LinkON);
+  doc["event_ts"]          = (unsigned long)getEpochMs();
 
   char buf[256];
   serializeJson(doc, buf);
@@ -251,7 +307,7 @@ void handleCommand(String cmd) {
       Serial.println("[INFO] Already publishing.");
     } else {
       isPublishing    = true;
-      lastTelemetryMs = 0;  // publish immediately on next loop
+      lastTelemetryMs = 0;
       Serial.println("[INFO] Publishing started — telemetry every 1s.");
       Serial.println("[INFO] Type  stop  to pause.");
     }
@@ -270,6 +326,8 @@ void handleCommand(String cmd) {
     Serial.print  ("  IP         : "); Serial.println(Ethernet.localIP());
     Serial.print  ("  Broker     : "); Serial.print(MQTT_HOST);
     Serial.print(":"); Serial.println(MQTT_PORT);
+    Serial.print  ("  NTP Server : "); Serial.println(NTP_SERVER);
+    Serial.print  ("  NTP Time   : "); Serial.println(timeClient.getFormattedTime());
     Serial.print  ("  MQTT       : "); Serial.println(mqtt.connected() ? "Connected" : "Disconnected");
     Serial.print  ("  Publishing : "); Serial.println(isPublishing ? "YES" : "NO");
     Serial.print  ("  Mode       : "); Serial.println(ahu_mode);
@@ -293,21 +351,37 @@ void setup() {
   Serial.println("  UNS-BMS-Lite  |  Arduino Opta  |  AHU-01");
   Serial.println("============================================");
 
+  // ── Ethernet ──
   Ethernet.begin(MAC, STATIC_IP, DNS_SERVER, GATEWAY, SUBNET);
   delay(1000);
 
   Serial.print("[ETH] IP      : "); Serial.println(Ethernet.localIP());
   Serial.print("[ETH] Broker  : "); Serial.print(MQTT_HOST);
   Serial.print(":"); Serial.println(MQTT_PORT);
-  Serial.println();
-  Serial.println("Type  connect  to connect to the broker.");
-  Serial.println();
+  Serial.print("[NTP] Server  : "); Serial.println(NTP_SERVER);
 
+  // ── NTP sync — block until successful ──
+  // Device must have a valid UTC clock before publishing any event_ts.
+  Serial.print("[NTP] Syncing  ...");
+  timeClient.begin();
+  while (!timeClient.update()) {
+    timeClient.forceUpdate();
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" OK");
+  Serial.print("[NTP] UTC time : "); Serial.println(timeClient.getFormattedTime());
+
+  // ── MQTT ──
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onCommand);
   mqtt.setBufferSize(512);
 
   randomSeed(analogRead(0));
+
+  Serial.println();
+  Serial.println("Type  connect  to connect to the broker.");
+  Serial.println();
 }
 
 // ─── Loop ────────────────────────────────────────────────────────────────────

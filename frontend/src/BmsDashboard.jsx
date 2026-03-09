@@ -28,13 +28,13 @@ const genTelemetry = (prev) => {
   const drift = (base, prev, lo, hi, noise) =>
     clamp(+((prev ?? base) + (Math.random() - 0.5) * noise).toFixed(2), lo, hi);
   return {
-    supply_air_temp_c: drift(16.5, p.supply_air_temp_c, 12, 22, 0.4),
+    supply_air_temp_c: drift(p.supply_air_setpoint_c ?? 16.5, p.supply_air_temp_c, 12, 22, 0.4),
     return_air_temp_c: drift(24.0, p.return_air_temp_c, 20, 28, 0.3),
     supply_air_setpoint_c: p.supply_air_setpoint_c ?? 16,
     chw_temp_in_c: drift(7.0, p.chw_temp_in_c, 5, 10, 0.15),
     chw_temp_out_c: drift(12.0, p.chw_temp_out_c, 9, 16, 0.15),
     chw_delta_t_c: drift(5.0, p.chw_delta_t_c, 3, 8, 0.1),
-    vfd_speed_pct: drift(72, p.vfd_speed_pct, 20, 100, 1.5),
+    vfd_speed_pct: drift(p.vfd_setpoint_pct ?? 72, p.vfd_speed_pct, 20, 100, 1.5),
     vfd_setpoint_pct: p.vfd_setpoint_pct ?? 72,
     valve_position_pct: drift(45, p.valve_position_pct, 0, 100, 2),
     filter_dp_pa: drift(120, p.filter_dp_pa, 50, 350, 1),

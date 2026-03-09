@@ -80,6 +80,23 @@ services:
     networks:
       - uns-network
 
+  # Frontend - Web Application# Frontend - Web Application
+  frontend:
+    build:
+      context: ../frontend # Changed from ./frontend
+      dockerfile: ../docker/Dockerfile.frontend # Changed from ../docker/...
+    container_name: uns-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - mqtt-broker
+    networks:
+      - uns-network
+    environment:
+      - VITE_MQTT_WS_URL=ws://localhost:8083/mqtt
+      - VITE_GRAFANA_URL=http://localhost:3000
+
 networks:
   uns-network:
     driver: bridge

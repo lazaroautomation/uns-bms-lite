@@ -20,9 +20,7 @@ services:
 
   # Node-RED - Transformation & Context Layer
   node-red:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.nodered
+    image: nodered/node-red:${NODERED_VERSION}
     container_name: uns-nodered
     restart: unless-stopped
     depends_on:
@@ -30,7 +28,9 @@ services:
     ports:
       - "1880:1880"
     volumes:
-      - nodered-data:/data
+      - type: bind
+        source: ../nodered
+        target: /data
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     networks:

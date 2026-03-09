@@ -16,7 +16,7 @@ node_modules/
 dist/
 # Node-RED local state
 nodered/.config.*
-nodered/*.backup
+nodered/*.backup    
 
 # .NET / C#
 bin/

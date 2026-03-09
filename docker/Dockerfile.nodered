@@ -1,0 +1,6 @@
+FROM nodered/node-red:latest
+
+# Copy flows and settings into the image at build time
+# Build context is project root (set in docker-compose.yaml)
+COPY nodered/flows.json /data/flows.json
+COPY nodered/settings.js /data/settings.js
